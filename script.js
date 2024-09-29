@@ -1,17 +1,19 @@
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-canvas.width = 800;
-canvas.height = 600;
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
 // Simulation Variables
 let ants = [];
 let nests = [{ x: canvas.width / 2, y: canvas.height / 2, size: 10, antCount: 3, foodStored: 0 }];
 let foodSources = [];
 let pheromoneMarker = null;  // Single pheromone marker placed by the player
-const foodCapacity = 10;
 const maxFoodPiles = 10;
 const antSpeed = 1;  // Slower speed
-const foodDetectionRadius = 8 * 5;  // Ant detection range for food (8 times the ant's radius)
+const foodDetectionRadius = 8 * 5;  // Ant detection range for food (double the ant's radius)
+let score = 0;
+let timer = 0;
+let foodSpawnInterval = 5000;  // Initial interval for food spawning (5 seconds)
 
 // Classes for Pheromone and Ants
 class PheromoneMarker {
@@ -98,6 +100,7 @@ class Ant {
             if (Math.hypot(this.x - this.nest_x, this.y - this.nest_y) < nests[0].size) {
                 this.hasFood = false;
                 nests[0].foodStored += 1;
+                score += 10;  // Add score for food delivery
             }
         } else if (foodNearby) {
             // Move towards nearby food and pick it up
@@ -122,10 +125,19 @@ class Ant {
     }
 
     draw() {
-        ctx.fillStyle = this.hasFood ? "red" : "green";
+        // Draw the ant body
+        ctx.fillStyle = "green";
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         ctx.fill();
+
+        // If the ant has food, draw a small red circle on its body
+        if (this.hasFood) {
+            ctx.fillStyle = "red";
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius / 2, 0, Math.PI * 2);  // Smaller red circle
+            ctx.fill();
+        }
     }
 }
 
@@ -139,11 +151,29 @@ function initializeSimulation() {
     for (let i = 0; i < 3; i++) {  // Add 3 initial food piles
         let randomX = Math.random() * (canvas.width - 100) + 50;
         let randomY = Math.random() * (canvas.height - 100) + 50;
-        foodSources.push({ x: randomX, y: randomY, size: foodCapacity });
+        let foodSize = getRandomFoodSize();  // Random food size between 10 and 50
+        foodSources.push({ x: randomX, y: randomY, size: foodSize });
     }
 }
 
-// Function to spawn food every 5 seconds, limiting to 10 piles
+// Function to get a random food size between 10 and 50, larger sizes spawn less often
+function getRandomFoodSize() {
+    const sizeWeights = [10, 20, 30, 40, 50];  // Possible food sizes
+    const weightDistribution = [0.4, 0.3, 0.2, 0.07, 0.03];  // Larger piles spawn less often
+
+    let random = Math.random();
+    let cumulativeWeight = 0;
+
+    for (let i = 0; i < sizeWeights.length; i++) {
+        cumulativeWeight += weightDistribution[i];
+        if (random <= cumulativeWeight) {
+            return sizeWeights[i];
+        }
+    }
+    return 10;  // Default to smallest size
+}
+
+// Function to spawn food, speed increases as the game progresses
 function spawnFood() {
     setInterval(() => {
         if (foodSources.length < maxFoodPiles) {
@@ -154,9 +184,18 @@ function spawnFood() {
                 randomY = Math.random() * (canvas.height - 100) + 50;
                 isTooClose = nests.some(nest => Math.hypot(randomX - nest.x, randomY - nest.y) < 100);
             } while (isTooClose);
-            foodSources.push({ x: randomX, y: randomY, size: foodCapacity });
+
+            let foodSize = getRandomFoodSize();  // Random food size between 10 and 50
+            foodSources.push({ x: randomX, y: randomY, size: foodSize });
         }
-    }, 5000);
+
+        // Decrease the food spawn interval over time (to make food spawn faster)
+        if (foodSpawnInterval > 1000) {
+            foodSpawnInterval -= 100;
+            clearInterval(spawnFood);  // Clear the existing interval
+            spawnFood();  // Restart with a faster interval
+        }
+    }, foodSpawnInterval);
 }
 
 // Function to update the size of nests based on the number of ants and food stored
@@ -166,9 +205,20 @@ function updateNestSize() {
     });
 }
 
+// Draw the timer and score in the top-right corner
+function drawHUD() {
+    ctx.fillStyle = "white";
+    ctx.font = "20px Arial";
+    ctx.fillText(`Time: ${Math.floor(timer / 60)}s`, canvas.width - 120, 30);  // Timer in seconds
+    ctx.fillText(`Score: ${score}`, canvas.width - 120, 60);  // Score display
+}
+
 // Animation loop
 function update() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Update timer
+    timer++;
 
     // Update nest size based on ants and food stored
     updateNestSize();
@@ -202,24 +252,23 @@ function update() {
         ant.draw();
     });
 
+    // Draw the timer and score
+    drawHUD();
+
     requestAnimationFrame(update);
 }
 
-// Event Listeners for placing pheromone markers
+// Event Listeners for placing pheromone markers behind instructions
 canvas.addEventListener("click", (e) => {
-    const mouseX = e.offsetX;
-    const mouseY = e.offsetY;
+    const mouseX = e.clientX;
+    const mouseY = e.clientY;
 
     // Place a yellow marker where the player clicks
     pheromoneMarker = new PheromoneMarker(mouseX, mouseY);
 });
 
+// Keydown event for adding nests, spawning ants, and removing pheromone markers
 window.addEventListener("keydown", (e) => {
-    const control = document.getElementById("controls");
-
-    control.classList.add("pressed");
-    setTimeout(() => control.classList.remove("pressed"), 100);
-
     switch (e.key) {
         case "n":  // Build a new nest
             const currentNest = nests.find(nest => nest.foodStored >= 20);
@@ -234,6 +283,7 @@ window.addEventListener("keydown", (e) => {
                 ants.push(new Ant(nestWithFood.x, nestWithFood.y, nestWithFood.x, nestWithFood.y));
                 nestWithFood.antCount++;
                 nestWithFood.foodStored--;
+                score += 20;  // Add score for spawning an ant
             }
             break;
         case "r":  // Remove the pheromone marker
