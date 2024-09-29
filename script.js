@@ -10,7 +10,7 @@ let foodSources = [];
 let pheromoneMarker = null;  // Single pheromone marker placed by the player
 const maxFoodPiles = 10;
 const antSpeed = 1;  // Slower speed
-const foodDetectionRadius = 8 * 5;  // Ant detection range for food (double the ant's radius)
+const foodDetectionRadius = 2 * 5;  // Ant detection range for food (double the ant's radius)
 let score = 0;
 let timer = 0;
 let foodSpawnInterval = 5000;  // Initial interval for food spawning (5 seconds)
@@ -103,9 +103,18 @@ class Ant {
                 score += 10;  // Add score for food delivery
             }
         } else if (foodNearby) {
-            // Move towards nearby food and pick it up
-            this.moveTowards(foodNearby.x, foodNearby.y);
-            if (Math.hypot(this.x - foodNearby.x, this.y - foodNearby.y) < foodNearby.size) {
+            // Move towards the edge of the food pile, not the center
+            const dx = foodNearby.x - this.x;
+            const dy = foodNearby.y - this.y;
+            const distanceToFood = Math.hypot(dx, dy);
+
+            // Stop at the edge of the food pile, which is the sum of the ant's radius and the food's radius
+            const stopDistance = this.radius + foodNearby.size;
+            if (distanceToFood > stopDistance) {
+                // Move towards the edge of the food pile
+                this.moveTowards(foodNearby.x, foodNearby.y);
+            } else {
+                // If close enough to the edge, collect food
                 this.hasFood = true;
                 this.lastFoodX = foodNearby.x;
                 this.lastFoodY = foodNearby.y;
